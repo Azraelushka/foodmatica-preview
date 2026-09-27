@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      // Класс .js включает стартовые состояния анимаций (бриф, раздел 6): без JS они не применяются.
+      // Страховка на случай, если бандл не загрузился: через 8 с сцена собирается сама.
+      // Основной запуск сцены — в React, src/lib/preloader.ts.
+      ;(function (h) {
+        h.classList.add('js')
+        setTimeout(function () {
+          h.classList.add('is-scene')
+        }, 8000)
+      })(document.documentElement)
+    </script>
+    <title>Согласие на обработку персональных данных — FOODMATICA</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="preload" as="image" href="/foodmatica-preview/assets/foodmatica-logo-ChM-fkJF.svg"/>
+    <!-- Geologica: вариативный файл закрывает H1 (700) и абзацы (300), бриф, раздел 14 -->
+    <link
+      rel="preload"
+      href="/foodmatica-preview/fonts/geologica-cyrillic-wght.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      href="/foodmatica-preview/fonts/geologica-latin-wght.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="icon" href="/foodmatica-preview/favicon.svg" type="image/svg+xml" />
+    <script type="module" crossorigin src="/foodmatica-preview/assets/index-CFoQdTRF.js"></script>
+    <link rel="stylesheet" crossorigin href="/foodmatica-preview/assets/index-C1cH7hpa.css">
+  </head>
+  <body>
+    <!--
+  FOODMATICA — прелоадер «logo reel»
+  ─────────────────────────────────────────────────────────────────────────
+  Механика (по референсу loader-main.mp4):
+    каждая буква логотипа сидит в своём «окне»; в окне — барабан из двух
+    элементов: буква и сплошной блок того же цвета. Барабан прокручивается:
+    блоки → буквы → блоки → … Оранжевая группа (Food) крутится вверх,
+    зелёная (matica) — вниз и чуть позже. На каждой смене «буквы → блоки»
+    фон перетекает Orange Tint ⇄ Green Tint. Цвета логотипа не меняются.
+
+  Установка — любой сайт:
+    вставить весь этот файл первым элементом внутри <body>.
+    Внешних зависимостей нет.
+
+  Установка — Tilda:
+    1. Самым первым блоком страницы добавить T123 («HTML-код»).
+    2. Вставить в него весь этот файл целиком.
+    3. Опубликовать. В редакторе блок не срабатывает — смотреть в
+       «Предпросмотре» или на опубликованной странице.
+
+  Поведение:
+    — крутится, пока не сработает window.load (минимум — один показ логотипа);
+    — уходит всегда из состояния «буквы» (логотип виден целиком);
+    — prefers-reduced-motion: статичный логотип, мягкое исчезновение;
+    — без JS прелоадер не показывается (<noscript>);
+    — по завершении на document отправляется событие 'fmpl:done'
+      (удобно, чтобы запускать анимации первого экрана).
+
+  API (для отладки из консоли):
+    FMPreloader.replay()                    — проиграть заново как на сайте
+    FMPreloader.replay({ loop: true })      — крутить бесконечно
+    FMPreloader.replay({ fakeLoad: 4000 })  — имитировать загрузку 4 с
+    FMPreloader.finish()                    — завершить (уйдёт на ближайшем логотипе)
+-->
+<style>
+  html.fmpl-lock,
+  html.fmpl-lock body { overflow: hidden !important; }
+
+  .fmpl {
+    position: fixed;
+    top: 0; right: 0; bottom: 0; left: 0;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: none;
+    background-color: #FFF2E8;
+    transition: background-color .52s cubic-bezier(.65, 0, .35, 1);
+  }
+  .fmpl[hidden] { display: none !important; }
+
+  .fmpl__logo {
+    display: block;
+    width: min(72vw, 480px);
+    height: auto;
+    overflow: hidden;
+  }
+
+  /* уход: шторка вверх */
+  .fmpl.is-exit-slide {
+    pointer-events: none;
+    transform: translate3d(0, -100%, 0);
+    transition: transform .9s cubic-bezier(.76, 0, .24, 1);
+  }
+  .fmpl.is-exit-slide .fmpl__logo {
+    opacity: 0;
+    transform: translate3d(0, 14vh, 0);
+    transition: opacity .5s ease, transform .9s cubic-bezier(.76, 0, .24, 1);
+  }
+
+  /* уход: растворение (и для reduced-motion) */
+  .fmpl.is-exit-fade {
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .5s ease;
+  }
+
+  .fmpl.is-reset,
+  .fmpl.is-reset .fmpl__logo { transition: none !important; }
+</style>
+<noscript><style>.fmpl { display: none !important; }</style></noscript>
+
+<div class="fmpl" id="fmpl" aria-hidden="true">
+  <svg class="fmpl__logo" id="fmpl-logo" viewBox="-1 -5 371.73 60.34" xmlns="http://www.w3.org/2000/svg" focusable="false"></svg>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Настройки ─────────────────────────────────────────────────────── */
+  var CFG = {
+    colors: ['#FFF2E8', '#EEF6EC'], // фон: Orange Tint → Green Tint → …
+    introHold: 320,     // мс: блоки на старте
+    roll: 540,          // мс: прокрутка блоки ⇄ буквы
+    groupDelay: 70,     // мс: зелёная группа стартует позже оранжевой
+    lettersHold: 650,   // мс: логотип между циклами
+    blocksHold: 380,    // мс: блоки между циклами
+    exitHold: 380,      // мс: логотип держится после загрузки перед уходом
+    minShow: 1200,      // мс: минимальное время показа
+    maxWait: 4000,      // мс: страховка — уйти, даже если load не пришёл
+    exit: 'slide',      // 'slide' — шторка вверх, 'fade' — растворение
+    oncePerSession: true // true — показывать только при первом заходе за сессию
+  };
+
+  /* ── Логотип ───────────────────────────────────────────────────────── */
+  var ORANGE = '#F77614', GREEN = '#5B9E4D';
+  var BASE = 49.08;   // базовая линия — низ всех блоков
+  var XH = 14.78;     // верх строчных — верх блоков строчных букв
+  var PAD = 4.5;      // окно шире буквы по вертикали (тонкие «хвосты» блоков на излёте, как в референсе)
+  var GAP = 1.5;      // запас, чтобы спрятанный элемент не просвечивал в покое
+
+  var ICON = [
+    'M70.21,41.94c-.47.12-3.46.82-6.28-1.08-2.42-1.63-3.1-4.05-3.26-4.76-.81.87-1.4,1.42-2.29,1.88-.38.2-1.76.83-3.66.83-.02,0-.05,0-.07,0-1.37-.01-3.39-.2-5.14-1.7-.03-.03-.06-.05-.1-.08-1.41-1.16-2.24-2.79-2.29-4.48-.03-1.17.29-2.89,2.06-4.51,1.58-1.47,3.38-2.07,4.94-2.21,0-3.71,0-7.41,0-11.12-4.21.15-8.74,1.69-12.47,5.17-3.76,3.45-5.77,8.06-5.63,12.98.13,4.9,2.43,9.53,6.3,12.73,3.33,2.84,7.45,4.3,12.24,4.34,4.22-.01,7.4-1.28,8.93-2.07,2.91-1.5,4.58-3.35,5.93-4.84.05-.06.11-.12.16-.18.21-.26.43-.53.64-.81,0-.03,0-.07,0-.1',
+    'M96.96,19.26c-7.14-5.86-15.8-4.88-21.12-2.23-2.55,1.32-4.53,2.97-6.2,5.16-.37.48-.74.99-1.1,1.52,0,0,0,.02,0,.02.45-.1,3.33-.68,6,1.23,2.56,1.83,3.01,4.56,3.09,5.14.28-.41.55-.8.82-1.14.59-.77,1.24-1.42,2.43-2.03.51-.25,5.05-2.36,9.04.91,1.43,1.18,2.25,2.77,2.29,4.48.03,1.17-.3,2.9-2.09,4.54-1.69,1.59-3.61,2.27-5.28,2.31-.02,3.71,0,7.42.01,11.12,4.54-.04,9.19-1.85,12.83-5.29,3.76-3.44,5.77-8.05,5.63-12.98-.13-4.91-2.44-9.56-6.35-12.78',
+    'M63.61,14.71c-2.38-.08-3.32,3.31-1.28,4.47l-.14.78c-2.97.02-4.58,3.88-2.58,6.02l-2.79,4.04c-2.53-.66-4.11,3.03-1.83,4.39,2.09,1.45,4.79-1.32,3.32-3.37l2.79-4.03c.84.33,1.88.3,2.7-.08l1.04,1.32c-5.62,5.23.95,13.59,7.32,9.66l1.46,1.82c-2.81,2.81-.31,8.05,3.67,7.61,4.11-.15,5.73-5.87,2.39-8.16l.89-2.21c3.17.02,3.15-4.83,0-4.83-2.13-.07-3.25,2.76-1.68,4.16l-.85,2.1c-.96-.27-2.06-.16-2.95.27l-1.56-1.94c4.2-4.69-.75-12.15-7.21-9.46l-1.08-1.45c1.44-1.68.73-4.61-1.27-5.49l.15-.85c2.79-.56,2.34-4.8-.5-4.78'
+  ];
+
+  /* g: 0 — оранжевая группа (вверх), 1 — зелёная (вниз)
+     x0..x1 — окно; bx0..bx1 — блок (по умолчанию = окно); gt..gb — габарит глифа; bt — верх блока */
+  var UNITS = [
+    { g: 0, c: ORANGE, x0: 0, x1: 32.72, gt: 5.03, gb: 49.08, bt: 5.03,
+      p: ['M32.72,5.03V18.88H16.36V23.91H29.57V36.49H16.36V49.08H0V5.03Z'] },
+    { g: 0, c: ORANGE, x0: 36.01, x1: 69.38, bx1: 68.38, gt: 14.70, gb: 50.29, bt: XH, p: ICON },
+    { g: 0, c: ORANGE, x0: 69.38, x1: 103.32, bx0: 70.38, gt: 14.70, gb: 50.29, bt: XH, p: ICON },
+    { g: 0, c: ORANGE, x0: 107.33, x1: 144.45, gt: 2.52, gb: 50.03, bt: 2.52,
+      p: ['M123.06,32.4c0-3.15,1.57-4.72,3.46-4.72s3.46,1.57,3.46,4.72-1.57,4.72-3.46,4.72-3.46-1.57-3.46-4.72M129.35,2.52v16.99s-2.52-4.72-8.81-4.72c-6.92,0-13.21,6.29-13.21,17.62s6.29,17.62,13.21,17.62c6.29,0,8.81-4.72,8.81-4.72l1.26,3.78h13.84V2.52h-15.1Z'] },
+    { g: 1, c: GREEN, x0: 150.74, x1: 206.12, gt: 14.78, gb: 49.08, bt: XH,
+      p: ['M184.72,20.76s-3.15-5.98-9.44-5.98-8.81,4.72-8.81,4.72l-1.26-3.78h-14.47v33.35h15.1v-17.62c0-2.52,1.26-3.77,2.52-3.77s2.52,1.26,2.52,3.77v17.62h15.1v-17.62c0-2.52,1.26-3.77,2.52-3.77s2.52,1.26,2.52,3.77v17.62h15.1v-17.62c0-11.64-5.03-16.67-11.33-16.67s-10.07,5.98-10.07,5.98'] },
+    { g: 1, c: GREEN, x0: 209.90, x1: 245.14, gt: 14.77, gb: 50.01, bt: XH,
+      p: ['M225,38.07c0-1.89,1.57-3.46,5.03-3.46,0,3.78-1.57,5.35-3.15,5.35-.94,0-1.89-.94-1.89-1.89M213.36,19.82l5.35,8.49s2.52-2.52,5.66-2.52c5.03,0,5.66,3.46,5.66,3.46h-5.03c-10.7,0-15.1,4.4-15.1,10.38s4.4,10.38,11.33,10.38c5.66,0,8.18-4.72,8.18-4.72l1.26,3.78h14.47v-16.68c0-9.75-7.87-17.62-18.56-17.62-8.49,0-13.21,5.03-13.21,5.03'] },
+    { g: 1, c: GREEN, x0: 248.29, x1: 273.45, gt: 5.03, gb: 50.34, bt: 5.03,
+      p: ['M252.69,5.03v10.7h-4.4v12.59h4.4v5.35c0,11.01,5.66,16.67,15.1,16.67,3.15,0,5.66-.63,5.66-.63v-12.58s-1.26.31-2.52.31c-1.89,0-3.15-1.26-3.15-3.77v-5.35h5.66v-12.59h-5.66V5.03h-15.1Z'] },
+    { g: 1, c: GREEN, x0: 279.74, x1: 294.84, gt: 0, gb: 49.08, bt: 0,
+      p: ['M279.74,49.08h15.1V15.73h-15.1v33.35ZM279.74,11.96h15.1V0h-15.1v11.96Z'] },
+    { g: 1, c: GREEN, x0: 299.88, x1: 332.60, gt: 14.78, gb: 50.02, bt: XH,
+      p: ['M299.88,32.4c0,9.75,7.87,17.62,18.56,17.62,9.12,0,14.16-5.35,14.16-5.35l-6.29-10.07s-2.52,2.52-5.66,2.52-5.03-1.89-5.03-4.72,1.89-4.72,5.03-4.72,5.66,2.52,5.66,2.52l6.29-10.07s-5.03-5.35-14.16-5.35c-10.7,0-18.56,7.87-18.56,17.62'] },
+    { g: 1, c: GREEN, x0: 334.49, x1: 369.73, gt: 14.77, gb: 50.01, bt: XH,
+      p: ['M349.59,38.07c0-1.89,1.57-3.46,5.03-3.46,0,3.78-1.57,5.35-3.15,5.35-.95,0-1.89-.94-1.89-1.89M337.95,19.82l5.35,8.49s2.52-2.52,5.66-2.52c5.03,0,5.66,3.46,5.66,3.46h-5.03c-10.7,0-15.1,4.4-15.1,10.38s4.4,10.38,11.33,10.38c5.66,0,8.18-4.72,8.18-4.72l1.26,3.78h14.47v-16.68c0-9.75-7.87-17.62-18.56-17.62-8.49,0-13.21,5.03-13.21,5.03'] }
+  ];
+
+  /* ── Окружение ─────────────────────────────────────────────────────── */
+  var root = document.documentElement;
+  var el = document.getElementById('fmpl');
+  var svg = document.getElementById('fmpl-logo');
+  if (!el || !svg) return;
+
+  // Прямым потомком <body>: чтобы обёртки конструктора (opacity, transform) не прятали и не ломали fixed
+  if (document.body && el.parentNode !== document.body) document.body.insertBefore(el, document.body.firstChild);
+
+  if (CFG.oncePerSession) {
+    try {
+      if (sessionStorage.getItem('fmpl-seen')) { el.parentNode.removeChild(el); return; }
+      sessionStorage.setItem('fmpl-seen', '1');
+    } catch (e) { /* приватный режим — просто показываем */ }
+  }
+
+  var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  var now = function () { return (window.performance && performance.now) ? performance.now() : Date.now(); };
+
+  /* ── Сборка SVG ────────────────────────────────────────────────────── */
+  var NS = 'http://www.w3.org/2000/svg';
+  function mk(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  var defs = mk('defs', {}, svg);
+  var units = UNITS.map(function (u, i) {
+    var top = Math.min(u.gt, u.bt), bot = Math.max(u.gb, BASE);
+    var h = bot - top;
+    var bx0 = u.bx0 != null ? u.bx0 : u.x0, bx1 = u.bx1 != null ? u.bx1 : u.x1;
+
+    var clip = mk('clipPath', { id: 'fmpl-w' + i }, defs);
+    mk('rect', { x: u.x0 - .6, y: top - PAD, width: u.x1 - u.x0 + 1.2, height: h + PAD * 2 }, clip);
+
+    var win = mk('g', { 'clip-path': 'url(#fmpl-w' + i + ')' }, svg);
+    var glyph = mk('g', { fill: u.c }, win);
+    u.p.forEach(function (d) { mk('path', { d: d }, glyph); });
+    var block = mk('rect', { x: bx0, y: u.bt, width: bx1 - bx0, height: BASE - u.bt, fill: u.c }, win);
+
+    return {
+      glyph: glyph,
+      block: block,
+      dist: h + PAD + GAP,          // ход барабана
+      dir: u.g === 0 ? -1 : 1,      // -1 — вверх, 1 — вниз
+      delay: u.g === 0 ? 0 : CFG.groupDelay
+    };
+  });
+
+  function ty(node, y) { node.setAttribute('transform', 'translate(0 ' + y.toFixed(3) + ')'); }
+
+  // state: true — буквы, false — блоки. Скрытый элемент ждёт на «входной» стороне.
+  function park(letters) {
+    units.forEach(function (u) {
+      ty(letters ? u.glyph : u.block, 0);
+      ty(letters ? u.block : u.glyph, -u.dir * u.dist);
+    });
+  }
+
+  /* ── Время ─────────────────────────────────────────────────────────── */
+  function bezier(p1x, p1y, p2x, p2y) {
+    var cx = 3 * p1x, bx = 3 * (p2x - p1x) - cx, ax = 1 - cx - bx;
+    var cy = 3 * p1y, by = 3 * (p2y - p1y) - cy, ay = 1 - cy - by;
+    function sx(t) { return ((ax * t + bx) * t + cx) * t; }
+    function sy(t) { return ((ay * t + by) * t + cy) * t; }
+    return function (x) {
+      if (x <= 0) return 0;
+      if (x >= 1) return 1;
+      var lo = 0, hi = 1, t = x;
+      for (var i = 0; i < 24; i++) {
+        if (sx(t) < x) lo = t; else hi = t;
+        t = (lo + hi) / 2;
+      }
+      return sy(t);
+    };
+  }
+  var ease = bezier(.76, 0, .18, 1); // медленный старт, резкая середина, длинный хвост
+
+  var runId = 0;
+
+  // Кадровый цикл: fn(elapsed) → true, чтобы остановиться. Промис вернёт false, если запуск отменён.
+  function frames(id, fn) {
+    return new Promise(function (resolve) {
+      var t0 = now();
+      (function tick() {
+        if (id !== runId) return resolve(false);
+        if (fn(now() - t0)) return resolve(true);
+        requestAnimationFrame(tick);
+      })();
+    });
+  }
+
+  function roll(id, toLetters) {
+    var total = CFG.roll + CFG.groupDelay;
+    return frames(id, function (t) {
+      t = Math.min(t, total);
+      units.forEach(function (u) {
+        var p = ease((t - u.delay) / CFG.roll);
+        ty(toLetters ? u.block : u.glyph, u.dir * u.dist * p);
+        ty(toLetters ? u.glyph : u.block, -u.dir * u.dist * (1 - p));
+      });
+      return t >= total;
+    }).then(function (ok) { if (ok) park(toLetters); return ok; });
+  }
+
+  /* ── Готовность страницы ───────────────────────────────────────────── */
+  var loaded = document.readyState === 'complete';
+  if (!loaded) window.addEventListener('load', function () { loaded = true; });
+
+  var opts = {}, startedAt = 0, bg = 0;
+
+  function ready() {
+    if (opts.loop) return false;
+    var t = now() - startedAt;
+    if (t < CFG.minShow) return false;
+    if (t >= CFG.maxWait) return true;
+    if (opts.fakeLoad != null) return t >= opts.fakeLoad;
+    return loaded;
+  }
+
+  function setBg(i) { bg = i; el.style.backgroundColor = CFG.colors[i]; }
+
+  /* ── Сценарий ──────────────────────────────────────────────────────── */
+  function sequence(id) {
+    if (reduced) {
+      park(true);
+      return frames(id, ready).then(function (ok) { if (ok) leave(id, 'fade'); });
+    }
+
+    park(false);
+    return frames(id, function (t) { return t >= CFG.introHold; })
+      .then(function step(ok) {
+        if (!ok) return;
+        return roll(id, true)
+          .then(function (ok) {
+            return ok && frames(id, function (t) {
+              return t >= CFG.lettersHold || (t >= CFG.exitHold && ready());
+            });
+          })
+          .then(function (ok) {
+            if (!ok) return;
+            if (ready()) return leave(id, CFG.exit);
+            setBg(1 - bg);
+            return roll(id, false)
+              .then(function (ok) {
+                return ok && frames(id, function (t) { return t >= CFG.blocksHold || ready(); });
+              })
+              .then(step);
+          });
+      });
+  }
+
+  function leave(id, kind) {
+    var cls = kind === 'fade' ? 'is-exit-fade' : 'is-exit-slide';
+    root.classList.remove('fmpl-lock');
+    el.classList.add(cls);
+    setTimeout(function () {
+      if (id !== runId) return;
+      el.hidden = true;
+      el.classList.add('is-reset');
+      el.classList.remove(cls);
+      var ev;
+      try { ev = new CustomEvent('fmpl:done'); }
+      catch (e) { ev = document.createEvent('Event'); ev.initEvent('fmpl:done', false, false); }
+      document.dispatchEvent(ev);
+    }, kind === 'fade' ? 520 : 920);
+  }
+
+  function start(o) {
+    var id = ++runId;
+    opts = o || {};
+    el.classList.add('is-reset');
+    el.classList.remove('is-exit-slide', 'is-exit-fade');
+    el.hidden = false;
+    setBg(0);
+    void el.offsetWidth; // применить сброс без анимации
+    el.classList.remove('is-reset');
+    root.classList.add('fmpl-lock');
+    startedAt = now();
+    sequence(id);
+  }
+
+  window.FMPreloader = {
+    replay: start,
+    finish: function () { opts.loop = false; opts.fakeLoad = 0; }
+  };
+
+  start();
+})();
+</script>
+    <div id="root"><a class="skip-link" href="#main">Перейти к содержанию</a><header class="_header_ispn6_3"><a href="/foodmatica-preview/"><img src="/foodmatica-preview/assets/foodmatica-logo-ChM-fkJF.svg" alt="FOODMATICA" width="232" height="30"/></a></header><main id="main" tabindex="-1" class="_main_ispn6_4"><h1>Согласие на обработку персональных данных</h1><p>[[CLIENT: от юриста]]</p></main><footer class="_footer_ispn6_5"><p>ООО «Виллеко» · ИНН 7716971493 · ОГРН 1227700616824</p></footer></div>
+  </body>
+</html>
